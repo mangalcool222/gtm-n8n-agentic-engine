@@ -1,0 +1,169 @@
+{
+  "name": "01 - Job Hunter Auto-Pilot (Feed -> Gemini AI -> Trello)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 6
+            }
+          ]
+        }
+      },
+      "id": "trigger-6h",
+      "name": "Every 6 Hours Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://remotive.com/api/remote-jobs?category=product&limit=10",
+        "options": {}
+      },
+      "id": "fetch-jobs",
+      "name": "Fetch PM Jobs API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={{GEMINI_API_KEY}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are an expert GTM and Product Management Career Filter. Your job is to analyze incoming Job Descriptions (JDs) and filter them based strictly on Mangal's profile constraints.\\n\\nREJECT IMMEDIATELY (Respond ONLY with the word 'SKIP') if ANY of the following conditions are met:\\n1. EXPERIENCE GAP: The role explicitly requires more than 3 years of experience (e.g., 4+, 5+, 7+ years, 3-5 years, Senior PM, Staff PM, Lead PM). Mangal targets Entry-Level, APM, Junior PM, or Growth/GTM Internships (0-3 years).\\n2. GEOGRAPHIC RESTRICTION (NON-INDIA / NON-GLOBAL): The role is restricted to specific countries/regions where Mangal is not eligible (e.g., \\\"US-only\\\", \\\"Must be based in UK\\\", \\\"EU citizenship required\\\", \\\"Local US office anchor days\\\"). Only accept \\\"Worldwide Remote\\\", \\\"Remote - India\\\", or remote setups that explicitly allow global/international candidates.\\n3. WRONG DOMAIN: Regulated enterprise infrastructure, complex financial ledgers (5+ yrs P&L), or corporate management.\\n\\nACCEPTABLE (Generate Pitch):\\nIf acceptable (0-3 yrs, Global/India Remote, Startup/SaaS/AI/Automation builder mindset):\\nGenerate a 3-bullet customized pitch for Mangal highlighting:\\n- Product/Growth thinking alignment.\\n- Technical execution & automation (n8n, Python, APIs).\\n- Scrappy 0-to-1 startup mindset.\\n\\nJob Title: {{ $json.title }}\\nCompany: {{ $json.company_name }}\\nLocation: {{ $json.candidate_required_location }}\\nDescription: {{ $json.description.slice(0, 1500) }}\"\n    }]\n  }]\n}",
+        "options": {}
+      },
+      "id": "gemini-ai",
+      "name": "Gemini AI Pitch Generator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false
+          },
+          "conditions": [
+            {
+              "id": "check-skip",
+              "leftValue": "={{ $json.candidates[0].content.parts[0].text.trim() }}",
+              "rightValue": "SKIP",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ]
+        }
+      },
+      "id": "filter-skip",
+      "name": "Filter Out Irrelevant Jobs",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.trello.com/1/cards",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "{{TRELLO_API_KEY}}"
+            },
+            {
+              "name": "token",
+              "value": "{{TRELLO_TOKEN}}"
+            },
+            {
+              "name": "idList",
+              "value": "{{TRELLO_WISHLIST_LIST_ID}}"
+            },
+            {
+              "name": "name",
+              "value": "=🔥 {{ $('Fetch PM Jobs API').item.json.title }} - {{ $('Fetch PM Jobs API').item.json.company_name }}"
+            },
+            {
+              "name": "desc",
+              "value": "=📌 **Job URL:** {{ $('Fetch PM Jobs API').item.json.url }}\n📍 **Location:** {{ $('Fetch PM Jobs API').item.json.candidate_required_location }}\n🎓 **Profile Fit:** Verified 0-3 Yrs (Worldwide / India Remote)\n🔗 **Application URL:** Verified Active Link\n\n🤖 **Gemini AI Customized Pitch:**\n{{ $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "trello-card",
+      "name": "Create Trello Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, 300]
+    }
+  ],
+  "connections": {
+    "Every 6 Hours Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch PM Jobs API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch PM Jobs API": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI Pitch Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI Pitch Generator": {
+      "main": [
+        [
+          {
+            "node": "Filter Out Irrelevant Jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Out Irrelevant Jobs": {
+      "main": [
+        [
+          {
+            "node": "Create Trello Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true
+}
