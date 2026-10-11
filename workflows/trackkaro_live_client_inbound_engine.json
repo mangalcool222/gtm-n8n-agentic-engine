@@ -1,0 +1,244 @@
+{
+  "name": "03 - TrackKaro AI Live Client Inbound (demo.trackkaro.com -> Gemini AI -> Sheets CRM -> WhatsApp & Telegram)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gtm-agency-lead-inbound",
+        "responseMode": "onReceived",
+        "responseData": "firstEntryJson",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "POST, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "Content-Type"
+              }
+            ]
+          }
+        }
+      },
+      "id": "webhook-gtm-inbound",
+      "name": "TrackKaro Inbound Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "gtm-agency-lead-inbound"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={{GEMINI_API_KEY}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ [{ parts: [{ text: `You are an executive GTM & Sales Advisor for Mangal (Founder of TrackKaro AI).\nA potential client just filled out the inquiry form on demo.trackkaro.com.\n\nClient Details:\n- Name: ${$json.body.lead_name || $json.body.full_name || 'Anonymous'}\n- Company: ${$json.body.company || 'Direct Inquiry'}\n- WhatsApp/Phone: ${$json.body.lead_phone || $json.body.phone_number || 'N/A'}\n- Email: ${$json.body.lead_email || $json.body.email || 'N/A'}\n- Budget & Goal: ${$json.body.budget || 'Custom Setup'}\n- Property / Scope: ${$json.body.property_interest || 'GTM Automation Engine'}\n\nProvide a concise 2-part brief for Mangal before calling them:\n1. Rating: [🔥 HOT CLIENT / ⚡ WARM LEAD]\n2. 3-Bullet Closing Strategy: What specific automation value prop should Mangal pitch to close this deal on the call?` }] }] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gemini-gtm-qualifier",
+      "name": "Gemini AI Deal Advisor",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxUBfYOX-PGMm7HtHhbP56WTtQYhJZqrb8qPvbllvzHKnUXGA8qlLgwN8I0UMa05DdC/exec",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "dateAdded",
+              "value": "={{ $now.format(\"yyyy-MM-dd HH:mm\") }}"
+            },
+            {
+              "name": "company",
+              "value": "={{ $('TrackKaro Inbound Webhook').item.json.body.company || 'Direct Inquiry' }}"
+            },
+            {
+              "name": "jobTitle",
+              "value": "={{ ($('TrackKaro Inbound Webhook').item.json.body.lead_name || 'Client') + ' (' + ($('TrackKaro Inbound Webhook').item.json.body.lead_phone || '') + ')' }}"
+            },
+            {
+              "name": "location",
+              "value": "={{ $('TrackKaro Inbound Webhook').item.json.body.lead_email || 'India' }}"
+            },
+            {
+              "name": "jobUrl",
+              "value": "={{ $('TrackKaro Inbound Webhook').item.json.body.budget || 'Inquiry' }}"
+            },
+            {
+              "name": "status",
+              "value": "HOT CLIENT INQUIRY"
+            },
+            {
+              "name": "aiPitch",
+              "value": "={{ $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sheets-gtm-crm",
+      "name": "Push to Google Sheets CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.callmebot.com/whatsapp.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $env.CLIENT_WHATSAPP_PHONE || '919876543210' }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.CALLMEBOT_API_KEY || '123456' }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ '🚨 *NEW TRACKKARO CLIENT INQUIRY!* 🚨\n\n👤 *Client:* ' + ($('TrackKaro Inbound Webhook').item.json.body.lead_name || 'Direct Lead') + '\n🏢 *Company:* ' + ($('TrackKaro Inbound Webhook').item.json.body.company || 'Direct') + '\n📞 *Phone:* ' + ($('TrackKaro Inbound Webhook').item.json.body.lead_phone || 'N/A') + '\n📧 *Email:* ' + ($('TrackKaro Inbound Webhook').item.json.body.lead_email || 'N/A') + '\n💰 *Budget/Goal:* ' + ($('TrackKaro Inbound Webhook').item.json.body.budget || 'Standard') + '\n\n🤖 *AI Closing Brief:*\n' + $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "whatsapp-callmebot-client",
+      "name": "Instant WhatsApp Alert (CallMeBot)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        340
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN || 'BOT_TOKEN_HERE' }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_CHAT_ID || 'CHAT_ID_HERE' }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ '🚨 NEW CLIENT INQUIRY (demo.trackkaro.com)!\n\nName: ' + ($('TrackKaro Inbound Webhook').item.json.body.lead_name || 'N/A') + '\nCompany: ' + ($('TrackKaro Inbound Webhook').item.json.body.company || 'N/A') + '\nPhone: ' + ($('TrackKaro Inbound Webhook').item.json.body.lead_phone || 'N/A') + '\nEmail: ' + ($('TrackKaro Inbound Webhook').item.json.body.lead_email || 'N/A') + '\nBudget/Goal: ' + ($('TrackKaro Inbound Webhook').item.json.body.budget || 'N/A') + '\n\nAI Closing Brief:\n' + $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "telegram-gtm-backup",
+      "name": "Instant Telegram Alert (Backup)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        500
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "TrackKaro Inbound Webhook": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI Deal Advisor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI Deal Advisor": {
+      "main": [
+        [
+          {
+            "node": "Push to Google Sheets CRM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Instant WhatsApp Alert (CallMeBot)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Instant Telegram Alert (Backup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true
+}
