@@ -1,5 +1,5 @@
 {
-  "name": "01 - Job Hunter Auto-Pilot (Feed -> Gemini AI -> Trello)",
+  "name": "01 - Job Hunter Auto-Pilot (Feed -> Gemini AI -> Trello + Google Sheets)",
   "nodes": [
     {
       "parameters": {
@@ -16,23 +16,42 @@
       "name": "Every 6 Hours Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
-      "position": [220, 300]
+      "position": [
+        180,
+        300
+      ]
     },
     {
       "parameters": {
-        "url": "https://remotive.com/api/remote-jobs?category=product&limit=10",
+        "url": "https://remotive.com/api/remote-jobs?category=product&limit=25",
         "options": {}
       },
       "id": "fetch-jobs",
       "name": "Fetch PM Jobs API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [440, 300]
+      "position": [
+        360,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 1. Get raw jobs array\nconst allJobs = $input.first().json.jobs || [];\n\n// 2. Pre-filter: drop strict physical presence or ultra-senior 10+ yr executive roles\nconst preFiltered = allJobs.filter(job => {\n  const loc = (job.candidate_required_location || \"\").toLowerCase();\n  const title = (job.title || \"\").toLowerCase();\n  \n  // Must allow remote / worldwide / india or no strict physical local office\n  const isEligibleLocation = loc.includes(\"worldwide\") || loc.includes(\"anywhere\") || loc.includes(\"remote\") || loc.includes(\"india\") || loc === \"\";\n  \n  // Exclude purely executive or heavy hardware/clinical titles\n  const isExecutiveOrIrrelevant = title.includes(\"director\") || title.includes(\"vice president\") || title.includes(\"chief \") || title.includes(\"nurse\") || title.includes(\"physician\");\n  \n  return isEligibleLocation && !isExecutiveOrIrrelevant;\n});\n\n// 3. Take Top 8 jobs per run (comfortably within Google 15 RPM with batching)\nconst selected = preFiltered.slice(0, 8);\n\nreturn selected.map(job => ({ json: job }));\n"
+      },
+      "id": "split-jobs",
+      "name": "Split Jobs Array",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        540,
+        300
+      ]
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key={{GEMINI_API_KEY}}",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={{GEMINI_API_KEY}}",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
@@ -43,15 +62,36 @@
           ]
         },
         "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"contents\": [{\n    \"parts\": [{\n      \"text\": \"You are an expert GTM and Product Management Career Filter. Your job is to analyze incoming Job Descriptions (JDs) and filter them based strictly on Mangal's profile constraints.\\n\\nREJECT IMMEDIATELY (Respond ONLY with the word 'SKIP') if ANY of the following conditions are met:\\n1. EXPERIENCE GAP: The role explicitly requires more than 3 years of experience (e.g., 4+, 5+, 7+ years, 3-5 years, Senior PM, Staff PM, Lead PM). Mangal targets Entry-Level, APM, Junior PM, or Growth/GTM Internships (0-3 years).\\n2. GEOGRAPHIC RESTRICTION (NON-INDIA / NON-GLOBAL): The role is restricted to specific countries/regions where Mangal is not eligible (e.g., \\\"US-only\\\", \\\"Must be based in UK\\\", \\\"EU citizenship required\\\", \\\"Local US office anchor days\\\"). Only accept \\\"Worldwide Remote\\\", \\\"Remote - India\\\", or remote setups that explicitly allow global/international candidates.\\n3. WRONG DOMAIN: Regulated enterprise infrastructure, complex financial ledgers (5+ yrs P&L), or corporate management.\\n\\nACCEPTABLE (Generate Pitch):\\nIf acceptable (0-3 yrs, Global/India Remote, Startup/SaaS/AI/Automation builder mindset):\\nGenerate a 3-bullet customized pitch for Mangal highlighting:\\n- Product/Growth thinking alignment.\\n- Technical execution & automation (n8n, Python, APIs).\\n- Scrappy 0-to-1 startup mindset.\\n\\nJob Title: {{ $json.title }}\\nCompany: {{ $json.company_name }}\\nLocation: {{ $json.candidate_required_location }}\\nDescription: {{ $json.description.slice(0, 1500) }}\"\n    }]\n  }]\n}",
-        "options": {}
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ [{ parts: [{ text: `You are an expert GTM, Product, Growth & Operations Career Filter for Mangal.\\n\\nREJECT IMMEDIATELY (Respond ONLY with the word 'SKIP') if ANY of the following conditions are met:\\n1. HARD SENIORITY CAP: The role explicitly requires 7+ or 10+ years of experience, VP, Executive, or Principal/Staff Architect level.\\n2. PHYSICAL LOCAL OFFICE REQUIREMENT: Explicitly requires local physical office presence in non-eligible countries (e.g. 'Must relocate to London office', 'In-person NYC office 4 days/week'). Accept Worldwide Remote, Remote India, or Global Remote.\\n3. COMPLETELY UNRELATED DOMAIN: Clinical nursing, medical practice, physical sports coaching, heavy civil hardware.\\n\\nACCEPTABLE (Generate Pitch):\\nAccept all Product Management, APM, Product Ops, Growth, GTM, Founder's Office, Strategy & Ops, Business/Data Analyst, Marketing, AI/Automation Builder roles (0-5 yrs or flexible experience).\\n\\nGenerate a 3-bullet customized pitch for Mangal highlighting:\\n- Product, Growth & Business thinking alignment.\\n- Technical execution & automation (n8n, Python, APIs).\\n- Scrappy 0-to-1 startup mindset.\\n\\nJob Title: ${$json.title || ''}\\nCompany: ${$json.company_name || ''}\\nLocation: ${$json.candidate_required_location || ''}\\nDescription: ${($json.description || '').replace(/<[^>]*>?/gm, '').slice(0, 1000)}` }] }] }}"
+            }
+          ]
+        },
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 4000
+            }
+          }
+        }
       },
       "id": "gemini-ai",
       "name": "Gemini AI Pitch Generator",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 300]
+      "position": [
+        720,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -76,7 +116,10 @@
       "name": "Filter Out Irrelevant Jobs",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [880, 300]
+      "position": [
+        920,
+        300
+      ]
     },
     {
       "parameters": {
@@ -99,11 +142,11 @@
             },
             {
               "name": "name",
-              "value": "=🔥 {{ $('Fetch PM Jobs API').item.json.title }} - {{ $('Fetch PM Jobs API').item.json.company_name }}"
+              "value": "=\ud83d\udd25 {{ $(\"Split Jobs Array\").item.json.title }} - {{ $(\"Split Jobs Array\").item.json.company_name }}"
             },
             {
               "name": "desc",
-              "value": "=📌 **Job URL:** {{ $('Fetch PM Jobs API').item.json.url }}\n📍 **Location:** {{ $('Fetch PM Jobs API').item.json.candidate_required_location }}\n🎓 **Profile Fit:** Verified 0-3 Yrs (Worldwide / India Remote)\n🔗 **Application URL:** Verified Active Link\n\n🤖 **Gemini AI Customized Pitch:**\n{{ $json.candidates[0].content.parts[0].text }}"
+              "value": "=\ud83d\udccc **Job URL:** {{ $(\"Split Jobs Array\").item.json.url }}\n\ud83d\udccd **Location:** {{ $(\"Split Jobs Array\").item.json.candidate_required_location }}\n\ud83c\udf93 **Profile Fit:** Flexible Remote Match (Product / Growth / Ops)\n\ud83d\udd17 **Application URL:** Verified Active Link\n\n\ud83e\udd16 **Gemini AI Customized Pitch:**\n{{ $json.candidates[0].content.parts[0].text }}"
             }
           ]
         },
@@ -113,7 +156,68 @@
       "name": "Create Trello Card",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1100, 300]
+      "position": [
+        1140,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxUBfYOX-PGMm7HtHhbP56WTtQYhJZqrb8qPvbllvzHKnUXGA8qlLgwN8I0UMa05DdC/exec",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "dateAdded",
+              "value": "={{ $now.format(\"yyyy-MM-dd HH:mm\") }}"
+            },
+            {
+              "name": "company",
+              "value": "={{ $(\"Split Jobs Array\").item.json.company_name }}"
+            },
+            {
+              "name": "jobTitle",
+              "value": "={{ $(\"Split Jobs Array\").item.json.title }}"
+            },
+            {
+              "name": "location",
+              "value": "={{ $(\"Split Jobs Array\").item.json.candidate_required_location }}"
+            },
+            {
+              "name": "jobUrl",
+              "value": "={{ $(\"Split Jobs Array\").item.json.url }}"
+            },
+            {
+              "name": "status",
+              "value": "Wishlist"
+            },
+            {
+              "name": "aiPitch",
+              "value": "={{ $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sheets-webhook",
+      "name": "Push to Google Sheets Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1140,
+        420
+      ]
     }
   ],
   "connections": {
@@ -129,6 +233,17 @@
       ]
     },
     "Fetch PM Jobs API": {
+      "main": [
+        [
+          {
+            "node": "Split Jobs Array",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Jobs Array": {
       "main": [
         [
           {
@@ -155,6 +270,11 @@
         [
           {
             "node": "Create Trello Card",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Push to Google Sheets Webhook",
             "type": "main",
             "index": 0
           }

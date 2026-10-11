@@ -1,0 +1,225 @@
+{
+  "name": "02 - TrackKaro AI Lead Routing Engine (Website Form -> Gemini AI -> Sheets CRM -> WhatsApp & Telegram Alert)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trackkaro-lead",
+        "options": {}
+      },
+      "id": "webhook-lead",
+      "name": "Website Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "webhookId": "trackkaro-lead"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key={{GEMINI_API_KEY}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "contents",
+              "value": "={{ [{ parts: [{ text: `You are an AI Lead Qualifier for TrackKaro AI. Analyze this inbound lead:\nName: ${$json.body.name || 'Anonymous'}\nPhone: ${$json.body.phone || 'N/A'}\nEmail: ${$json.body.email || 'N/A'}\nCompany: ${$json.body.company || 'N/A'}\nRequirement: ${$json.body.message || 'No details provided'}\n\nRespond with exactly 2 concise lines:\nRating: [HOT 🔥 / WARM ⚡ / INFO ℹ️]\nSales Advice: [1 crisp recommendation for how the business owner should pitch when calling this lead]` }] }] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "gemini-qualifier",
+      "name": "Gemini AI Lead Qualifier",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "retryOnFail": true,
+      "maxTries": 2
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxUBfYOX-PGMm7HtHhbP56WTtQYhJZqrb8qPvbllvzHKnUXGA8qlLgwN8I0UMa05DdC/exec",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "dateAdded",
+              "value": "={{ $now.format(\"yyyy-MM-dd HH:mm\") }}"
+            },
+            {
+              "name": "company",
+              "value": "={{ $('Website Form Webhook').item.json.body.company || 'Direct Visitor' }}"
+            },
+            {
+              "name": "jobTitle",
+              "value": "={{ $('Website Form Webhook').item.json.body.name + ' (' + $('Website Form Webhook').item.json.body.phone + ')' }}"
+            },
+            {
+              "name": "location",
+              "value": "={{ $('Website Form Webhook').item.json.body.email || 'N/A' }}"
+            },
+            {
+              "name": "jobUrl",
+              "value": "={{ $('Website Form Webhook').item.json.body.message || 'N/A' }}"
+            },
+            {
+              "name": "status",
+              "value": "New Lead"
+            },
+            {
+              "name": "aiPitch",
+              "value": "={{ $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "sheets-crm",
+      "name": "Push to Google Sheets CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.callmebot.com/whatsapp.php",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "phone",
+              "value": "={{ $env.CLIENT_WHATSAPP_PHONE || '919876543210' }}"
+            },
+            {
+              "name": "apikey",
+              "value": "={{ $env.CALLMEBOT_API_KEY || '123456' }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ '🚨 *NEW TRACKKARO LEAD RECEIVED!* 🚨\n\n👤 *Name:* ' + $('Website Form Webhook').item.json.body.name + '\n📞 *Phone:* ' + $('Website Form Webhook').item.json.body.phone + '\n📧 *Email:* ' + $('Website Form Webhook').item.json.body.email + '\n💬 *Requirement:* ' + $('Website Form Webhook').item.json.body.message + '\n\n🤖 *AI Analysis:*\n' + $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "whatsapp-callmebot",
+      "name": "Instant WhatsApp Alert (CallMeBot)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        340
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $env.TELEGRAM_BOT_TOKEN || 'BOT_TOKEN_HERE' }}/sendMessage",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "keypair",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "chat_id",
+              "value": "={{ $env.TELEGRAM_CHAT_ID || 'CHAT_ID_HERE' }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ '🚨 NEW LEAD RECEIVED!\n\nName: ' + $('Website Form Webhook').item.json.body.name + '\nPhone: ' + $('Website Form Webhook').item.json.body.phone + '\nRequirement: ' + $('Website Form Webhook').item.json.body.message + '\n\nAI Qualifier:\n' + $json.candidates[0].content.parts[0].text }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "telegram-alert",
+      "name": "Instant Telegram Alert (Backup)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        500
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Website Form Webhook": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI Lead Qualifier",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI Lead Qualifier": {
+      "main": [
+        [
+          {
+            "node": "Push to Google Sheets CRM",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Instant WhatsApp Alert (CallMeBot)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Instant Telegram Alert (Backup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true
+}
