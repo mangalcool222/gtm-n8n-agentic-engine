@@ -1,0 +1,24 @@
+# Environment & Credentials
+.env
+*.env
+*.local
+credentials.json
+service_account.json
+
+# Operating System
+.DS_Store
+Thumbs.db
+
+# IDE & Tooling
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local Active Workflows (Contain Live API Keys & Bot Tokens)
+workflows/all_sources_smart_filter.json
+workflows/job_hunter_autopilot_v2.json
+workflows/master_job_hunter_autopilot.json
+workflows/master_sheets_only.json
+workflows/pure_apm_intern_hunter.json
+
