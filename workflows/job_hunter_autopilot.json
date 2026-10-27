@@ -204,7 +204,7 @@
             },
             {
               "name": "aiPitch",
-              "value": "={{ $json.candidates[0].content.parts[0].text }}"
+              "value": "={{ ($json.candidates[0].content.parts[0].text || '').replace(/^[=+\\-@]+/, '').trim() }}"
             }
           ]
         },

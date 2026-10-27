@@ -1,0 +1,71 @@
+{
+  "name": "Harvey AI SDR — Live Sheet & Telegram Sync",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "harvey-event",
+        "options": {}
+      },
+      "id": "harvey-webhook-trigger",
+      "name": "Jarvis Event Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 300],
+      "webhookId": "harvey-event"
+    },
+    {
+      "parameters": {
+        "chatId": "-5417070792",
+        "text": "={{ ($json.body.action === 'new_lead') ? ('🎯 *NEW HIGH-TICKET PROSPECT SCOUTED!*\n\n🏢 *Company:* ' + ($json.body.company || 'Target Account') + '\n👤 *Contact:* ' + ($json.body.name || 'Decision Maker') + '\n📊 *Score:* ' + ($json.body.score || 95) + '/100\n🌐 *Website:* ' + ($json.body.website || 'N/A') + '\n📧 *Email:* ' + ($json.body.email || 'N/A') + '\n\n📊 *Google Sheet CRM:* Auto-appended to Sheet!') : (($json.body.status === 'replied') ? ('🔥 *HOT PROSPECT REPLIED!* 🔥\n\n👤 *Contact:* ' + ($json.body.name || 'Decision Maker') + '\n🏢 *Company:* ' + ($json.body.company || 'Target Account') + '\n📧 *Email:* ' + ($json.body.email || '') + '\n\n⚡ *Action:* Inbound reply received! Call/Connect now while intent is hot!') : ('🚀 *JARVIS OUTREACH SENT* ⚡\n\n👤 *Contact:* ' + ($json.body.name || 'Decision Maker') + '\n🏢 *Company:* ' + ($json.body.company || 'Target Account') + '\n📊 *Score:* ' + ($json.body.score || 98) + '/100\n✅ *Status:* ' + ($json.body.status || 'contacted').toUpperCase() + '\n\n📊 Google Sheet CRM Column H auto-synced!')) }}",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "telegram-sound-notification",
+      "name": "Telegram Sound Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [480, 200],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://script.google.com/macros/s/AKfycbxpI58-dQKQ-o4lwZEkdtLz3HF4hCiPcztgqV8HuFO7_M7BLoOSaGsUfAjYwMUhbDkt/exec",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {}
+      },
+      "id": "update-google-sheet-status",
+      "name": "Auto-Sync to Google Sheet CRM",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [480, 400],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Jarvis Event Webhook": {
+      "main": [
+        [
+          {
+            "node": "Telegram Sound Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Auto-Sync to Google Sheet CRM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true
+}

@@ -140,6 +140,12 @@ function doPost(e) {
       sheet.appendRow(["Date Added", "Company", "Job Title", "Location", "Job URL", "Status", "AI Pitch"]);
     }
     
+    // Formula Escape Guard: Agar text '=', '+', ya '-' se start ho toh Sheets usse formula na samjhe
+    var aiPitch = (data.aiPitch || "").toString().trim();
+    if (aiPitch.startsWith("=") || aiPitch.startsWith("+") || aiPitch.startsWith("-") || aiPitch.startsWith("@")) {
+      aiPitch = "'" + aiPitch; // Prefixing with single quote forces Sheets to render as pure text
+    }
+    
     sheet.appendRow([
       data.dateAdded || new Date().toLocaleString(),
       data.company || "",
@@ -147,7 +153,7 @@ function doPost(e) {
       data.location || "",
       data.jobUrl || "",
       data.status || "Wishlist",
-      data.aiPitch || ""
+      aiPitch
     ]);
     
     return ContentService.createTextOutput(JSON.stringify({ result: "success" }))
